@@ -11,7 +11,7 @@ import javafx.collections.ObservableList;
 public class bookData {
 	public static ObservableList<book> getAllBooks() {
     	ObservableList<book> books = FXCollections.observableArrayList();
-        String query = "SELECT * FROM book";
+        String query = "SELECT book_id,title,name,category,book_type,original_price,available FROM book LEFT JOIN publisher ON book.publisher_id = publisher.publisher_id";
 
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();
@@ -21,11 +21,13 @@ public class bookData {
             	book book = new book(
                         rs.getInt("book_id"),
                         rs.getString("title"),
-                        rs.getInt("publisher_id"),
+                        rs.getString("name"),
                         rs.getString("category"),
                         rs.getString("book_type"),
                         rs.getDouble("original_price"),
-                        rs.getInt("available"));
+                        rs.getInt("available")>0?"Yes":"No"
+
+                );
             	books.add(book);
             }
 

@@ -1,23 +1,22 @@
 package com.example.demo;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.stream.Stream;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.util.*;
 
 import javafx.application.Application;
-import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 
 public class test extends Application {
-    
+    ResultSetMetaData rs;
+
     private BorderPane mainLayout;
     private VBox contentArea;
     private String currentEntity = "Book";
@@ -30,8 +29,16 @@ public class test extends Application {
 	private static ObservableList<loanperiod> loanPeriodList;
 	private static ObservableList<publisher> publisherList;
 	private static ObservableList<sale> saleList;
+
+    Map<Control,String> datafield = new LinkedHashMap<>();
     @Override
     public void start(Stage primaryStage) {
+
+        try {
+            rs= Objects.requireNonNull(DatabaseConnection.getConnection()).createStatement().executeQuery("SELECT * FROM "+currentEntity).getMetaData();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
         mainLayout = new BorderPane();
         mainLayout.setStyle("-fx-background-color: linear-gradient(to bottom right, #667eea 0%, #764ba2 100%);");
         
@@ -117,6 +124,8 @@ public class test extends Application {
             final String entity = entities[i];
             btn.setOnAction(e -> {
                 currentEntity = entity;
+                if(entity.equals("Borrower Type")) currentEntity="Borrowertype";
+                else if(entity.equals("Loan Period")) currentEntity="Loanperiod";
                 updateContentArea();
                 highlightSelectedButton(btn);
             });
@@ -165,7 +174,7 @@ public class test extends Application {
         VBox entityBox = (VBox) mainLayout.getLeft();
         for (javafx.scene.Node node : entityBox.getChildren()) {
             if (node instanceof Button) {
-                ((Button) node).setStyle("-fx-background-color: linear-gradient(to bottom, #ffffff, #f8f9fa); -fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-font-size: 14px; -fx-background-radius: 12px; -fx-border-radius: 12px; -fx-border-color: #e0e0e0;");
+                node.setStyle("-fx-background-color: linear-gradient(to bottom, #ffffff, #f8f9fa); -fx-text-fill: #2c3e50; -fx-font-weight: bold; -fx-font-size: 14px; -fx-background-radius: 12px; -fx-border-radius: 12px; -fx-border-color: #e0e0e0;");
             }
         }
         // Add highlight to selected button
@@ -194,6 +203,19 @@ public class test extends Application {
         
         VBox.setVgrow(dataTable, Priority.ALWAYS);
     }
+    private List<String> getdata(String title)  {
+        return switch (title) {
+            case "book" -> bookData.getAllBooks().stream().map(e -> e.getTitle()).toList();
+            case "author" -> AuthorData.getAllAuthors().stream().map(e -> e.getFull_name()).toList();
+            case "borrower" -> borrowerData.getAllBorrowers().stream().map(e -> e.getFull_name()).toList();
+            case "borrowertype" -> borrowertypeData.getAllBorrowerTypes().stream().map(e -> e.getType_name()).toList();
+            case "loan" -> loanData.getAllLoans().stream().map(e -> String.valueOf(e.getLoan_id())).toList();
+            case "loanperiod" -> loanperiodData.getAllLoanperiods().stream().map(e -> e.getPeriod_name()).toList();
+            case "publisher" -> publisherData.getAllPublishers().stream().map(e -> e.getName()).toList();
+            case "Sale" -> saleData.getAllSales().stream().map(e -> String.valueOf(e.getSale_id())).toList();
+            default -> null;
+        };
+    }
     
     private void createTableView() {
         dataTable = new TableView<>();
@@ -203,28 +225,28 @@ public class test extends Application {
         // Create columns based on current entity
         switch (currentEntity) {
             case "Book":
-            	dataTable = new getTables().gettable(book.class, new bookData().getAllBooks());
+            	dataTable = new getTables().gettable(book.class, bookData.getAllBooks());
                 break;
             case "Author":
-            	dataTable = new getTables().gettable(Author.class, new AuthorData().getAllAuthors());
+            	dataTable = new getTables().gettable(Author.class, AuthorData.getAllAuthors());
                 break;
             case "Borrower":
-            	dataTable = new getTables().gettable(borrower.class, new borrowerData().getAllBorrowers());
+            	dataTable = new getTables().gettable(borrower.class, borrowerData.getAllBorrowers());
                 break;
-            case "Borrower Type":
-            	dataTable = new getTables().gettable(borrowertype.class, new borrowertypeData().getAllBorrowerTypes());
+            case "Borrowertype":
+            	dataTable = new getTables().gettable(borrowertype.class, borrowertypeData.getAllBorrowerTypes());
                 break;
             case "Loan":
-            	dataTable = new getTables().gettable(loan.class, new loanData().getAllLoans());
+            	dataTable = new getTables().gettable(loan.class, loanData.getAllLoans());
                 break;
-            case "Loan Period":
-            	dataTable = new getTables().gettable(loanperiod.class, new loanperiodData().getAllLoanperiods());
+            case "Loanperiod":
+            	dataTable = new getTables().gettable(loanperiod.class, loanperiodData.getAllLoanperiods());
                 break;
             case "Publisher":
-            	dataTable = new getTables().gettable(publisher.class, new publisherData().getAllPublishers());
+            	dataTable = new getTables().gettable(publisher.class, publisherData.getAllPublishers());
                 break;
             case "Sale":
-            	dataTable = new getTables().gettable(sale.class, new saleData().getAllSales());
+            	dataTable = new getTables().gettable(sale.class, saleData.getAllSales());
                 break;
         }
         
@@ -278,29 +300,78 @@ public class test extends Application {
         formGrid.setHgap(30);
         formGrid.setVgap(20);
         formGrid.setPadding(new Insets(10));
-        
-        String[] fieldLabels = getFieldLabelsForEntity();
-        
-        for (int i = 0; i < Objects.requireNonNull(fieldLabels).length; i++) {
-            VBox field = createFormField(fieldLabels[i]);
-            formGrid.add(field, i % 2, i / 2);
-        }
-        
+
+
+            createFormField();
+
+                int i=0;
+                int j=0;
+                for(Control s:datafield.keySet()) {
+                    VBox field = new VBox(10);
+                    Label label = new Label(datafield.get(s)+"");
+                    label.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #34495e;");
+                		if(s instanceof ComboBox){
+                			ComboBox<String> comboBox=(ComboBox<String>) s;
+                			field.getChildren().addAll(label,comboBox);
+                		}
+                        else if(s instanceof TextField){
+                    			TextField textField=(TextField) s;
+                    			field.getChildren().addAll(label,textField);
+                    		}
+                    formGrid.add(field, i%3 , j/3);
+                    i++;
+                    j++;
+                    if(i==3) i=0;
+
+                	}
+
+
         form.getChildren().add(formGrid);
         return form;
-    }
-    Map<TextField, String> formData = new HashMap<>();
-    
-    private VBox createFormField(String labelText) {
-        VBox field = new VBox(8);
-        Label label = new Label(labelText);
+            }
+
+
+    private void createFormField() {
+    datafield.clear();
+for(String labelText: getFieldLabelsForEntity()) {
+    if(labelText.equals("type_id"))
+        labelText="borrowertype_id";
+    else if(labelText.equals("period_id"))
+        labelText="loanperiod_id";
+    if(labelText.toLowerCase().contains("available")){
+        Label label = new Label();
         label.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #34495e;");
-        TextField textField = new TextField();
-        textField.setStyle("-fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #bdc3c7; -fx-padding: 0 12px; -fx-font-size: 14px;");
-        field.getChildren().addAll(label, textField);
-        return field;
+        ComboBox<String> comboBox = new ComboBox<>();
+        comboBox.setStyle("-fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #bdc3c7; -fx-padding: 0 12px; -fx-font-size: 14px;");
+        comboBox.getItems().addAll("Yes","No");
+        datafield.put(comboBox, labelText);
+        continue;
     }
-    
+    if(labelText.toLowerCase().contains("_id")&&!labelText.toLowerCase().split("_")[0].equals(currentEntity.toLowerCase())) {
+        System.out.println(currentEntity+" "+labelText);
+
+        List<String>data= getdata( labelText.split("_")[0]);
+        ComboBox<String> comboBox = new ComboBox<>();
+        comboBox.setStyle("-fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #bdc3c7; -fx-padding: 0 12px; -fx-font-size: 14px;");
+
+        for(String s: Objects.requireNonNull(data))
+            comboBox.getItems().add(s);
+        labelText= labelText.replace("_id", "_name");
+        datafield.put(comboBox, labelText);
+    }
+    else if(!labelText.toLowerCase().contains("id")){
+    System.out.println(labelText);
+    Label label = new Label();
+    label.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #34495e;");
+    TextField textField = new TextField();
+    textField.setPromptText("Enter " + labelText.toLowerCase() + "...");
+    textField.setStyle("-fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #bdc3c7; -fx-padding: 0 12px;");
+    datafield.put(textField, labelText);}
+
+
+
+      }
+    }
     private String[] getFieldLabelsForEntity() {
         switch (currentEntity) {
             case "Book":
@@ -309,11 +380,11 @@ public class test extends Application {
             	return new operation().getField(Author.class);
             case "Borrower":
             	return new operation().getField(borrower.class);
-            case "Borrower Type":
+            case "Borrowertype":
             	return new operation().getField(borrowertype.class);
             case "Loan":
             	return new operation().getField(loan.class);
-            case "Loan Period":
+            case "Loanperiod":
             	return new operation().getField(loanperiod.class);
             case "Publisher":
             	return new operation().getField(publisher.class);
@@ -394,9 +465,72 @@ public class test extends Application {
         deleteContainer.getChildren().addAll(warningIcon, title, warning, idBox, buttonBox);
         contentArea.getChildren().add(deleteContainer);
     }
+    private int getIdFromName(String name, String table) {
+        String query = "";
+        switch (table.toLowerCase()) {
+            case "author":
+                query = "SELECT author_id FROM author WHERE full_name = '" + name + "'";
+                break;
+            case "borrower":
+                query = "SELECT borrower_id FROM borrower WHERE full_name = '" + name + "'";
+                break;
+            case "borrowertype":
+                query = "SELECT type_id FROM borrowertype WHERE type_name = '" + name + "'";
+                break;
+            case "loanperiod":
+                query = "SELECT period_id FROM loanperiod WHERE period_name = '" + name + "'";
+                break;
+            case "publisher":
+                query = "SELECT publisher_id FROM publisher WHERE name = '" + name + "'";
+                break;
+            default:
+                return -1;
+        }
+        try {
+            ResultSet rs = Objects.requireNonNull(DatabaseConnection.getConnection()).createStatement().executeQuery(query);
+            if (rs.next()) {
+                return rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return -1;
+    }
+    private boolean submitBookentity() {
+        List<String> values = new ArrayList<>();
+        for (Control control : datafield.keySet()) {
+            if (control instanceof TextField) {
+
+                TextField textField = (TextField) control;
+                if(textField.getText().trim().isEmpty()){
+                    values.add("");
+                    continue;
+                }
+                values.add(textField.getText().trim());
+            } else if (control instanceof ComboBox) {
+                ComboBox<String> comboBox = (ComboBox<String>) control;
+                if(comboBox.getValue()==null) {
+                    values.add("");
+                    continue;
+                }
+                if(datafield.get(control).toLowerCase().contains("available")){
+                    values.add(comboBox.getValue().equals("Yes")?"1":"0");
+                    continue;
+                }
+                values.add(String.valueOf(getIdFromName(comboBox.getValue(),"publisher")));
+            }
+        }
+        return
+        new operation().insert(currentEntity.toLowerCase(), book.class, values);
+
+    }
     
     private void submitForm() {
+        boolean success = false;
         // Show success message
+        if(currentEntity.equals("Book"))
+        	success=submitBookentity();
+        if(success){
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("Success");
         alert.setHeaderText(null);
@@ -404,7 +538,14 @@ public class test extends Application {
         alert.showAndWait();
         
         // Return to main view with table
-        updateContentArea();
+        updateContentArea();}
+        else {
+        	Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText(null);
+            alert.setContentText("An error occurred while processing the " + currentEntity + " record. Please try again.");
+            alert.showAndWait();
+        }
     }
     
     public static void main(String[] args) {

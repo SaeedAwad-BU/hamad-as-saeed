@@ -11,7 +11,7 @@ import javafx.collections.ObservableList;
 public class AuthorData {
     public static ObservableList<Author> getAllAuthors() {
     	ObservableList<Author> authors = FXCollections.observableArrayList();
-        String query = "SELECT * FROM author";
+        String query = "SELECT author_id,CONCAT(first_name,' ',last_name) AS full_name,country,bio FROM author";
 
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();
@@ -20,8 +20,7 @@ public class AuthorData {
             while (rs.next()) {
                 Author author = new Author(
                         rs.getInt("author_id"),
-                        rs.getString("first_name"),
-                        rs.getString("last_name"),
+                        rs.getString("full_name"),
                         rs.getString("country"),
                         rs.getString("bio"));
                 authors.add(author);

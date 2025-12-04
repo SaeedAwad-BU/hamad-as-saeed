@@ -11,20 +11,20 @@ import javafx.collections.ObservableList;
 public class borrowerData {
 	public static ObservableList<borrower> getAllBorrowers() {
     	ObservableList<borrower> borrowers = FXCollections.observableArrayList();
-        String query = "SELECT * FROM borrower";
+        String query = "SELECT borrower_id,CONCAT(first_name,' ',last_name) AS full_name,type_name,contact_info FROM borrower JOIN borrowertype ON borrower.borrowertype_id = borrowertype.type_id";
 
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery(query)) {
 
             while (rs.next()) {
-                borrower borrower = new borrower(
+
+                borrower borrowers2 = new borrower(
                         rs.getInt("borrower_id"),
-                        rs.getString("first_name"),
-                        rs.getString("last_name"),
-                        rs.getInt("type_id"),
+                        rs.getString("full_name"),
+                        rs.getString("type_name"),
                         rs.getString("contact_info"));
-                borrowers.add(borrower);
+                borrowers.add(borrowers2);
             }
 
         } catch (SQLException e) {

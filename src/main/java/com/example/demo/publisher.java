@@ -23,7 +23,7 @@ public class publisher {
 }
 
 // Getters for TableView binding
-public int publisher_id() { return publisher_id.get(); }
+public int getPublisher_id() { return publisher_id.get(); }
 public String getName() { return name.get(); }
 public String getCity() { return city.get(); }
 public String getCountry() { return country.get(); }

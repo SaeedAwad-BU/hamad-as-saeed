@@ -2,11 +2,11 @@ package com.example.demo;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 import javafx.collections.FXCollections;
@@ -16,40 +16,74 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.cell.PropertyValueFactory;
 
 public class operation<E> {
-	public void insert(String table, Class<E>clazz, List<String> list) {
-			String insert = "INSERT INTO "+table+" (";
-		  Constructor<?> constructor = clazz.getConstructors()[0];
-		    Class<?>[] paramTypes = constructor.getParameterTypes();
-		    for (int i = 0; i <clazz.getDeclaredFields().length; i++) {
-			    Field[] f=clazz.getDeclaredFields();
-			    if(i<clazz.getDeclaredFields().length-1)
-		    insert+=f[i].getName()+",";
-			    else insert+=f[i].getName();
-		    }
-		    insert+=") VALUES (";
-		    for(int i=0; i<list.size(); i++) {
-		    	if(paramTypes[i]==int.class)
-		    	insert+=Integer.parseInt(list.get(i));
-		    	else if(paramTypes[i]==double.class)
-		    	insert+=Double.parseDouble(list.get(i));
-		    	else
-		    	insert+="\""+list.get(i)+"\"";
-		    	if(i<list.size()-1) insert+=",";
-		    }
-		    insert+=")";
-		    System.out.println(insert);
-		    makeQuery(insert);
-	}
-	public String[] getField (Class<E>clazz) {
-		 Constructor<?> constructor = clazz.getConstructors()[0];
-		    Class<?>[] paramTypes = constructor.getParameterTypes();
-		    String[] str=new String[clazz.getDeclaredFields().length];
-		    Field[] f=clazz.getDeclaredFields();
-		    for (int i = 0; i <clazz.getDeclaredFields().length; i++) {
-		    str[i]=f[i].getName();
-	}
-		    return str;
-		  }
+    public boolean insert(String table, Class<E> clazz, List<String> list) {
+        try {
+            ResultSet rs = DatabaseConnection.getConnection()
+                    .createStatement()
+                    .executeQuery("SELECT * FROM " + table);
+
+            ResultSetMetaData rsmd = rs.getMetaData();
+            int columnCount = rsmd.getColumnCount();
+
+            StringBuilder insert = new StringBuilder("INSERT INTO " + table + " (");
+
+            // أسماء الأعمدة
+            for (int i = 1; i <= columnCount; i++) {
+                insert.append(rsmd.getColumnName(i));
+                if (i < columnCount) insert.append(",");
+            }
+
+            insert.append(") VALUES (");
+
+            // القيم
+            for (int i = 1; i <= columnCount; i++) {
+list.stream().forEach(syso -> System.out.println(syso));
+                String val = list.get(i - 1); // لأن list 0-based
+
+                if (rsmd.getColumnType(i) == Types.INTEGER) {
+
+                    insert.append(val.isEmpty() ? "0" : Integer.parseInt(val));
+
+                } else if (rsmd.getColumnType(i) == Types.DOUBLE) {
+
+                    insert.append(val.isEmpty() ? "0.0" : Double.parseDouble(val));
+
+                } else {
+                    insert.append("'").append(val).append("'");
+                }
+
+                if (i < columnCount) insert.append(",");
+            }
+
+            insert.append(")");
+
+            System.out.println(insert);
+
+            return makeQuery(insert.toString());
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public String[] getField(Class<E> clazz) {
+        try {
+            ResultSet rs = Objects.requireNonNull(DatabaseConnection.getConnection()).createStatement().executeQuery("SELECT * FROM " + clazz.getSimpleName().toLowerCase());
+
+            int columnCount = rs.getMetaData().getColumnCount();
+            String[] str = new String[columnCount];
+
+            for (int i = 0; i < columnCount; i++) {
+                str[i] = rs.getMetaData().getColumnName(i + 1);
+            }
+
+            return str;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
 	
 	
 	
@@ -66,15 +100,17 @@ public class operation<E> {
 	
 	
 	
-	public void makeQuery(String str) {
+	public boolean makeQuery(String str) {
 
         try (Connection conn = DatabaseConnection.getConnection();
              Statement stmt = conn.createStatement();){
     
-             int rs = stmt.executeUpdate(str); 
+             int rs = stmt.executeUpdate(str);
+                return rs > 0;
 
         } catch (SQLException e) {
             e.printStackTrace();
         }
+        return false;
 	}
 }

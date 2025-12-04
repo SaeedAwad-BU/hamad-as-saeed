@@ -21,6 +21,7 @@ public class getTables<E>{
 		System.out.println();
 		for (int i = 0; i <clazz.getDeclaredFields().length; i++) {
 		    Field[] f=clazz.getDeclaredFields();
+            if(f[i].getName().equals("first_name")||f[i].getName().equals("last_name")) continue;
 		    TableColumn<E, String> name = new TableColumn<>(f[i].getName());
 		    name.setCellValueFactory(new PropertyValueFactory<>(f[i].getName()));
 
