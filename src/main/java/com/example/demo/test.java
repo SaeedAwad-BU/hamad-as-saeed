@@ -9,6 +9,7 @@ import java.util.*;
 
 import javafx.application.Application;
 import javafx.collections.ObservableList;
+import javafx.fxml.FXMLLoader;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -158,6 +159,27 @@ public class test extends Application {
             entityBox.getChildren().add(btn);
         }
         
+        // Add separator before Reports
+        Separator separator = new Separator();
+        separator.setPadding(new Insets(10, 0, 10, 0));
+        entityBox.getChildren().add(separator);
+        
+        // Add Reports button
+        Label reportsSectionTitle = new Label("REPORTS & STATISTICS");
+        reportsSectionTitle.setStyle("-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #7f8c8d; -fx-padding: 0 0 10px 0;");
+        entityBox.getChildren().add(reportsSectionTitle);
+        
+        Button reportsBtn = createEntityButton("Reports", "📊");
+        reportsBtn.setOnAction(e -> {
+            loadReportsView();
+            highlightSelectedButton(reportsBtn);
+            // Hide CRUD buttons when viewing reports
+            if (actionButtonsBox != null) {
+                actionButtonsBox.setVisible(false);
+            }
+        });
+        entityBox.getChildren().add(reportsBtn);
+        
         return entityBox;
     }
     
@@ -260,6 +282,11 @@ public class test extends Application {
     private void updateContentArea() {
         contentArea.getChildren().clear();
         
+        // Show CRUD buttons when viewing entities
+        if (actionButtonsBox != null) {
+            actionButtonsBox.setVisible(true);
+        }
+        
         VBox headerBox = new VBox(10);
         headerBox.setAlignment(Pos.CENTER_LEFT);
         headerBox.setPadding(new Insets(0, 0, 20, 0));
@@ -286,6 +313,31 @@ public class test extends Application {
         
         // Update CRUD button visibility when entity changes
         updateCRUDButtonVisibility();
+    }
+    
+    /**
+     * Load the Reports FXML view into the content area
+     */
+    private void loadReportsView() {
+        contentArea.getChildren().clear();
+        
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/example/demo/reports-view.fxml"));
+            BorderPane reportsView = loader.load();
+            
+            // Make reports view fill the content area
+            contentArea.getChildren().add(reportsView);
+            VBox.setVgrow(reportsView, Priority.ALWAYS);
+            
+        } catch (Exception e) {
+            System.err.println("Error loading Reports view: " + e.getMessage());
+            e.printStackTrace();
+            
+            // Show error message
+            Label errorLabel = new Label("Error loading Reports view: " + e.getMessage());
+            errorLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: #f44336;");
+            contentArea.getChildren().add(errorLabel);
+        }
     }
     
     /**
