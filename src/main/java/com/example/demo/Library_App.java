@@ -242,15 +242,20 @@ public class Library_App<E> extends Application {
 				return;
 			}
 			
+			user loggedInUser = null;
 			boolean loginSuccessful = false;
 			for (user u : UserList) {
 				if (u.getUsername().equals(username) && u.getPassword().equals(password)) {
+					loggedInUser = u;
 					loginSuccessful = true;
 					break;
 				}
 			}
 			
 			if (loginSuccessful) {
+				// Store logged-in user in session for role-based access control
+				UserSession.getInstance().setCurrentUser(loggedInUser);
+				
 				errorMessage.setVisible(false);
 				// Add success animation
 				loginButton.setText("✓ Success!");
@@ -267,11 +272,15 @@ public class Library_App<E> extends Application {
 					try {
 						Thread.sleep(1000);
 						javafx.application.Platform.runLater(() -> {
-							getTables<user> getuser = new getTables<>();
-							VBox vbox = new VBox(getuser.gettable(user.class, UserList));
-							primaryStage.setScene(new Scene(vbox, 800, 600));
+							// Launch the main test application which has the full CRUD interface
+							Stage mainStage = new Stage();
+							test mainApp = new test();
+							mainApp.start(mainStage);
+							primaryStage.close();
 						});
 					} catch (InterruptedException ex) {
+						ex.printStackTrace();
+					} catch (Exception ex) {
 						ex.printStackTrace();
 					}
 				}).start();

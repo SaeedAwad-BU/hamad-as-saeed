@@ -23,8 +23,21 @@ public class operation<E> {
     
     /**
      * Insert operation using PreparedStatement (FIXED: Now uses parameterized queries)
+     * ENHANCED: Added validation to prevent INSERT into unauthorized tables
      */
     public boolean insert(String table, Class<?> clazz, List<String> list) {
+        // Backend validation: Only allow INSERT into specific tables
+        String tableLower = table.toLowerCase();
+        if (!tableLower.equals("book") && 
+            !tableLower.equals("author") && 
+            !tableLower.equals("publisher") && 
+            !tableLower.equals("borrower") && 
+            !tableLower.equals("borrowertype")) {
+            System.err.println("INSERT operation not allowed for table: " + table);
+            System.err.println("Only Book, Author, Publisher, Borrower, and Borrowertype tables allow INSERT operations.");
+            return false;
+        }
+        
         try (Connection conn = DatabaseConnection.getConnection()) {
             if (conn == null) {
                 System.err.println("Failed to get database connection");

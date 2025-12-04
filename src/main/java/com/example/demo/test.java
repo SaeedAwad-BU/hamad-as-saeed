@@ -75,6 +75,11 @@ public class test extends Application {
         updateContentArea();
     }
     
+    // Search components (class-level variables for access)
+    private ComboBox<String> searchColumnComboBox;
+    private TextField searchField;
+    private Button searchButton;
+    
     private HBox createSearchArea() {
         HBox searchBox = new HBox(15);
         searchBox.setPadding(new Insets(20));
@@ -90,17 +95,30 @@ public class test extends Application {
         searchContainer.setAlignment(Pos.CENTER_RIGHT);
         searchContainer.setPadding(new Insets(0, 20, 0, 0));
         
+        // Column selection ComboBox
+        searchColumnComboBox = new ComboBox<>();
+        searchColumnComboBox.setPromptText("Select column to search...");
+        searchColumnComboBox.setStyle("-fx-pref-height: 45px; -fx-background-radius: 25px; -fx-border-radius: 25px; -fx-border-color: #e0e0e0; -fx-padding: 0 15px; -fx-font-size: 14px;");
+        searchColumnComboBox.setPrefWidth(200);
+        
+        // Update search columns when entity changes
+        updateSearchColumns();
+        
         // Search field
-        TextField searchField = new TextField();
-        searchField.setPromptText("Search books, authors, borrowers...");
+        searchField = new TextField();
+        searchField.setPromptText("Enter search value...");
         searchField.setStyle("-fx-pref-height: 45px; -fx-background-radius: 25px; -fx-border-radius: 25px; -fx-border-color: #e0e0e0; -fx-padding: 0 20px; -fx-font-size: 14px;");
-        searchField.setPrefWidth(350);
+        searchField.setPrefWidth(300);
         
         // Search button
-        Button searchButton = new Button("Search");
+        searchButton = new Button("Search");
         searchButton.setStyle("-fx-background-color: #4CAF50; -fx-background-radius: 25px; -fx-text-fill: white; -fx-font-weight: bold; -fx-pref-height: 45px; -fx-pref-width: 120px;");
+        searchButton.setOnAction(e -> performSearch());
         
-        searchContainer.getChildren().addAll(searchField, searchButton);
+        // Allow Enter key to trigger search
+        searchField.setOnAction(e -> performSearch());
+        
+        searchContainer.getChildren().addAll(searchColumnComboBox, searchField, searchButton);
         searchBox.getChildren().addAll(appTitle, searchContainer);
         
         HBox.setHgrow(searchContainer, Priority.ALWAYS);
@@ -130,6 +148,12 @@ public class test extends Application {
                 else if(entity.equals("Loan Period")) currentEntity="Loanperiod";
                 updateContentArea();
                 highlightSelectedButton(btn);
+                // Update search columns when entity changes
+                if (searchColumnComboBox != null) {
+                    updateSearchColumns();
+                }
+                // Update CRUD button visibility when entity changes
+                updateCRUDButtonVisibility();
             });
             entityBox.getChildren().add(btn);
         }
@@ -146,22 +170,72 @@ public class test extends Application {
         return btn;
     }
     
+    // Store action buttons as class variables for role-based visibility control
+    private Button insertBtn;
+    private Button updateBtn;
+    private Button deleteBtn;
+    private HBox actionButtonsBox;
+    
     private HBox createActionButtons() {
-        HBox actionBox = new HBox(30);
-        actionBox.setPadding(new Insets(20));
-        actionBox.setAlignment(Pos.CENTER);
-        actionBox.setStyle("-fx-background-color: rgba(255, 255, 255, 0.95);");
+        actionButtonsBox = new HBox(30);
+        actionButtonsBox.setPadding(new Insets(20));
+        actionButtonsBox.setAlignment(Pos.CENTER);
+        actionButtonsBox.setStyle("-fx-background-color: rgba(255, 255, 255, 0.95);");
         
-        Button insertBtn = createActionButton("➕ Insert", "#4CAF50");
-        Button updateBtn = createActionButton("✏️ Update", "#2196F3");
-        Button deleteBtn = createActionButton("🗑️ Delete", "#f44336");
+        insertBtn = createActionButton("➕ Insert", "#4CAF50");
+        updateBtn = createActionButton("✏️ Update", "#2196F3");
+        deleteBtn = createActionButton("🗑️ Delete", "#f44336");
         
         insertBtn.setOnAction(e -> showInsertForm());
         updateBtn.setOnAction(e -> showUpdateForm());
         deleteBtn.setOnAction(e -> showDeleteForm());
         
-        actionBox.getChildren().addAll(insertBtn, updateBtn, deleteBtn);
-        return actionBox;
+        // Check user role and show/hide buttons accordingly
+        updateCRUDButtonVisibility();
+        
+        actionButtonsBox.getChildren().addAll(insertBtn, updateBtn, deleteBtn);
+        return actionButtonsBox;
+    }
+    
+    /**
+     * Update CRUD button visibility based on user role.
+     * Only admin users can see Insert, Update, Delete buttons.
+     */
+    private void updateCRUDButtonVisibility() {
+        boolean isAdmin = UserSession.getInstance().isAdmin();
+        
+        if (isAdmin) {
+            insertBtn.setVisible(true);
+            updateBtn.setVisible(true);
+            deleteBtn.setVisible(true);
+            
+            // Also check if INSERT is allowed for this table
+            if (!isInsertAllowed()) {
+                insertBtn.setDisable(true);
+                insertBtn.setTooltip(new Tooltip("Insert not allowed for this table"));
+            } else {
+                insertBtn.setDisable(false);
+                insertBtn.setTooltip(null);
+            }
+        } else {
+            // Non-admin users can only view/search, not modify
+            insertBtn.setVisible(false);
+            updateBtn.setVisible(false);
+            deleteBtn.setVisible(false);
+        }
+    }
+    
+    /**
+     * Check if INSERT is allowed for the current table.
+     * Only Book, Author, Publisher, Borrower, Borrowertype tables allow INSERT.
+     */
+    private boolean isInsertAllowed() {
+        String entity = currentEntity.toLowerCase();
+        return entity.equals("book") || 
+               entity.equals("author") || 
+               entity.equals("publisher") || 
+               entity.equals("borrower") || 
+               entity.equals("borrowertype");
     }
     
     private Button createActionButton(String text, String color) {
@@ -204,7 +278,241 @@ public class test extends Application {
         contentArea.getChildren().add(dataTable);
         
         VBox.setVgrow(dataTable, Priority.ALWAYS);
+        
+        // Update search columns when entity changes
+        if (searchColumnComboBox != null) {
+            updateSearchColumns();
+        }
+        
+        // Update CRUD button visibility when entity changes
+        updateCRUDButtonVisibility();
     }
+    
+    /**
+     * Update the search column ComboBox with valid columns for the current table.
+     */
+    /**
+     * Update the search column ComboBox with valid columns for the current table.
+     */
+    private void updateSearchColumns() {
+        if (searchColumnComboBox == null) {
+            return;
+        }
+        
+        searchColumnComboBox.getItems().clear();
+        
+        // Get table name - some entities have different table names
+        String tableName = getTableNameForEntity(currentEntity);
+        List<String> columns = SearchHelper.getTableColumns(tableName);
+        
+        // For tables with JOINs, we need to get columns from the view/result structure
+        // Get columns from the actual table structure displayed
+        List<String> displayColumns = getDisplayColumnsForEntity();
+        if (!displayColumns.isEmpty()) {
+            searchColumnComboBox.getItems().addAll(displayColumns);
+        } else {
+            searchColumnComboBox.getItems().addAll(columns);
+        }
+        
+        // Set prompt text
+        if (searchColumnComboBox.getItems().isEmpty()) {
+            searchColumnComboBox.setPromptText("No columns available");
+        } else {
+            searchColumnComboBox.setPromptText("Select column to search...");
+        }
+    }
+    
+    /**
+     * Get the database table name for an entity (handles special cases)
+     */
+    private String getTableNameForEntity(String entity) {
+        String entityLower = entity.toLowerCase();
+        switch (entityLower) {
+            case "borrowertype":
+                return "borrowertype";
+            case "loanperiod":
+                return "loanperiod";
+            default:
+                return entityLower;
+        }
+    }
+    
+    /**
+     * Get display column names for the current entity (as shown in TableView)
+     */
+    private List<String> getDisplayColumnsForEntity() {
+        List<String> columns = new ArrayList<>();
+        
+        switch (currentEntity) {
+            case "Book":
+                columns.addAll(Arrays.asList("book_id", "title", "name", "category", "book_type", "original_price", "available"));
+                break;
+            case "Author":
+                columns.addAll(Arrays.asList("author_id", "full_name", "country", "bio"));
+                break;
+            case "Borrower":
+                columns.addAll(Arrays.asList("borrower_id", "full_name", "email", "phone", "borrowertype_name"));
+                break;
+            case "Borrowertype":
+                columns.addAll(Arrays.asList("type_id", "type_name", "max_books", "loan_period_days"));
+                break;
+            case "Loan":
+                columns.addAll(Arrays.asList("loan_id", "borrower_name", "title", "period_name", "loan_date", "due_date", "return_date"));
+                break;
+            case "Loanperiod":
+                columns.addAll(Arrays.asList("period_id", "period_name", "days"));
+                break;
+            case "Publisher":
+                columns.addAll(Arrays.asList("publisher_id", "name", "address", "phone"));
+                break;
+            case "Sale":
+                columns.addAll(Arrays.asList("sale_id", "book_title", "sale_date", "price", "quantity"));
+                break;
+            default:
+                // Fallback to database columns
+                break;
+        }
+        
+        return columns;
+    }
+    
+    /**
+     * Perform search operation using PreparedStatement with LIKE query.
+     * Updates the TableView immediately with search results.
+     */
+    private void performSearch() {
+        if (searchColumnComboBox == null || searchField == null) {
+            return;
+        }
+        
+        String selectedColumn = searchColumnComboBox.getValue();
+        String searchValue = searchField.getText();
+        
+        // If no column selected, show all data
+        if (selectedColumn == null || selectedColumn.trim().isEmpty()) {
+            updateContentArea();
+            return;
+        }
+        
+        // Perform search using PreparedStatement (safe from SQL injection)
+        searchTableData(selectedColumn, searchValue);
+    }
+    
+    /**
+     * Search table data using PreparedStatement with LIKE pattern.
+     * This method queries the database and updates the TableView.
+     */
+    private void searchTableData(String columnName, String searchValue) {
+        String tableName = currentEntity.toLowerCase();
+        
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            if (conn == null) {
+                return;
+            }
+            
+            String sql;
+            PreparedStatement pstmt;
+            
+            // If search value is empty, return all records
+            if (searchValue == null || searchValue.trim().isEmpty()) {
+                sql = "SELECT * FROM " + tableName;
+                pstmt = conn.prepareStatement(sql);
+            } else {
+                // Validate column name to prevent SQL injection
+                List<String> validColumns = SearchHelper.getTableColumns(tableName);
+                if (!validColumns.contains(columnName)) {
+                    Alert alert = new Alert(Alert.AlertType.WARNING);
+                    alert.setTitle("Invalid Column");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Invalid column selected for search.");
+                    alert.showAndWait();
+                    return;
+                }
+                
+                // Use LIKE with parameterized query for safe searching
+                sql = "SELECT * FROM " + tableName + " WHERE " + columnName + " LIKE ?";
+                pstmt = conn.prepareStatement(sql);
+                pstmt.setString(1, "%" + searchValue + "%");
+            }
+            
+            // Execute search and refresh table
+            try (ResultSet rs = pstmt.executeQuery()) {
+                // Refresh the table with search results by reloading data
+                refreshTableViewWithSearch(rs);
+            }
+            
+        } catch (SQLException e) {
+            System.err.println("Error performing search: " + e.getMessage());
+            e.printStackTrace();
+            
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Search Error");
+            alert.setHeaderText(null);
+            alert.setContentText("An error occurred during search: " + e.getMessage());
+            alert.showAndWait();
+        }
+    }
+    
+    /**
+     * Refresh TableView with search results.
+     * Uses Data class search methods to get filtered results.
+     */
+    private void refreshTableViewWithSearch(ResultSet rs) {
+        // Get search parameters
+        String selectedColumn = searchColumnComboBox != null ? searchColumnComboBox.getValue() : null;
+        String searchValue = searchField != null ? searchField.getText() : null;
+        
+        // Reload table with search results using Data class methods
+        loadTableDataWithSearch(selectedColumn, searchValue);
+    }
+    
+    /**
+     * Load table data with search filter using Data class methods.
+     */
+    private void loadTableDataWithSearch(String columnName, String searchValue) {
+        // Use search methods from Data classes if available
+        if (columnName != null && searchValue != null) {
+            switch (currentEntity) {
+                case "Book":
+                    ObservableList<book> bookResults = bookData.searchBooks(columnName, searchValue);
+                    dataTable = new getTables().gettable(book.class, bookResults);
+                    replaceTableInContentArea();
+                    return;
+                case "Author":
+                    ObservableList<Author> authorResults = AuthorData.searchAuthors(columnName, searchValue);
+                    dataTable = new getTables().gettable(Author.class, authorResults);
+                    replaceTableInContentArea();
+                    return;
+                default:
+                    // For other tables, reload all data
+                    // TODO: Add search methods to other Data classes following the same pattern
+                    break;
+            }
+        }
+        
+        // Fallback: reload all data
+        updateContentArea();
+    }
+    
+    /**
+     * Replace the table in the content area with updated search results
+     */
+    private void replaceTableInContentArea() {
+        int tableIndex = -1;
+        for (int i = 0; i < contentArea.getChildren().size(); i++) {
+            if (contentArea.getChildren().get(i) instanceof TableView) {
+                tableIndex = i;
+                break;
+            }
+        }
+        if (tableIndex >= 0) {
+            contentArea.getChildren().set(tableIndex, dataTable);
+        } else {
+            contentArea.getChildren().add(dataTable);
+        }
+        VBox.setVgrow(dataTable, Priority.ALWAYS);
+    }
+    
     private List<String> getdata(String title)  {
         return switch (title) {
             case "book" -> bookData.getAllBooks().stream().map(e -> e.getTitle()).toList();
