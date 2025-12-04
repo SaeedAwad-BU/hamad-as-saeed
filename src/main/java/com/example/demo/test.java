@@ -1,5 +1,7 @@
 package com.example.demo;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -217,6 +219,31 @@ public class test extends Application {
         };
     }
     
+    /**
+     * Get descriptive prompt text for ComboBox based on field type
+     */
+    private String getPromptTextForComboBox(String fieldName, String entityType) {
+        String lowerField = fieldName.toLowerCase();
+        
+        if (lowerField.contains("publisher")) {
+            return "Select publisher";
+        } else if (lowerField.contains("author")) {
+            return "Select author";
+        } else if (lowerField.contains("borrower")) {
+            return "Select borrower";
+        } else if (lowerField.contains("borrowertype") || lowerField.contains("type")) {
+            return "Select borrower type";
+        } else if (lowerField.contains("loanperiod") || lowerField.contains("period")) {
+            return "Select loan period";
+        } else if (lowerField.contains("book")) {
+            return "Select book";
+        } else if (lowerField.contains("available")) {
+            return "Choose availability status";
+        } else {
+            return "Select " + entityType;
+        }
+    }
+    
     private void createTableView() {
         dataTable = new TableView<>();
         dataTable.setStyle("-fx-background-color: rgba(255, 255, 255, 0.98); -fx-background-radius: 15px;");
@@ -255,6 +282,8 @@ public class test extends Application {
     }
     
     private void showInsertForm() {
+        isUpdateMode = false; // FIXED: Reset update mode flag
+        updateIdField = null;
         contentArea.getChildren().clear();
         
         VBox formContainer = new VBox(20);
@@ -344,6 +373,7 @@ for(String labelText: getFieldLabelsForEntity()) {
         ComboBox<String> comboBox = new ComboBox<>();
         comboBox.setStyle("-fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #bdc3c7; -fx-padding: 0 12px; -fx-font-size: 14px;");
         comboBox.getItems().addAll("Yes","No");
+        comboBox.setPromptText("Choose availability status"); // FIXED: Added prompt text
         datafield.put(comboBox, labelText);
         continue;
     }
@@ -357,6 +387,9 @@ for(String labelText: getFieldLabelsForEntity()) {
         for(String s: Objects.requireNonNull(data))
             comboBox.getItems().add(s);
         labelText= labelText.replace("_id", "_name");
+        // FIXED: Add descriptive prompt text based on field type
+        String promptText = getPromptTextForComboBox(labelText, labelText.split("_")[0]);
+        comboBox.setPromptText(promptText);
         datafield.put(comboBox, labelText);
     }
     else if(!labelText.toLowerCase().contains("id")){
@@ -395,7 +428,12 @@ for(String labelText: getFieldLabelsForEntity()) {
         }
     }
     
+    // Track current form mode and update ID field
+    private boolean isUpdateMode = false;
+    private TextField updateIdField = null;
+    
     private void showUpdateForm() {
+        isUpdateMode = true;
         showInsertForm();
         VBox formContainer = (VBox) contentArea.getChildren().get(0);
         Label title = (Label) formContainer.getChildren().get(0);
@@ -409,16 +447,200 @@ for(String labelText: getFieldLabelsForEntity()) {
         Label idLabel = new Label("Enter " + currentEntity + " ID:");
         idLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #34495e;");
         
-        TextField idField = new TextField();
-        idField.setPromptText("Enter ID to update...");
-        idField.setStyle("-fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #bdc3c7; -fx-padding: 0 12px;");
-        idField.setPrefWidth(200);
+        updateIdField = new TextField();
+        updateIdField.setPromptText("Enter ID to update...");
+        updateIdField.setStyle("-fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #bdc3c7; -fx-padding: 0 12px;");
+        updateIdField.setPrefWidth(200);
         Button searchBtn = new Button("Load Data");
         searchBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-weight: bold;");
         
-        idSearchBox.getChildren().addAll(idLabel, idField, searchBtn);
+        // FIXED: Load data into form fields when search button is clicked
+        searchBtn.setOnAction(e -> loadDataForUpdate());
+        
+        idSearchBox.getChildren().addAll(idLabel, updateIdField, searchBtn);
+        
+        // Get button box and modify Clear button behavior
+        HBox buttonBox = (HBox) formContainer.getChildren().get(formContainer.getChildren().size() - 1);
+        Button clearBtn = (Button) buttonBox.getChildren().get(1);
+        
+        // FIXED: Clear button should only clear fields, stay in Update mode
+        clearBtn.setOnAction(e -> clearUpdateForm());
+        
+        // Change submit button to "Update Record"
+        Button submitBtn = (Button) buttonBox.getChildren().get(0);
+        submitBtn.setText("Update Record");
+        submitBtn.setOnAction(e -> submitUpdateForm());
         
         formContainer.getChildren().add(1, idSearchBox);
+    }
+    
+    /**
+     * Clear form fields but stay in Update mode (FIXED)
+     */
+    private void clearUpdateForm() {
+        // Clear all form fields
+        for (Control control : datafield.keySet()) {
+            if (control instanceof TextField) {
+                ((TextField) control).clear();
+            } else if (control instanceof ComboBox) {
+                ((ComboBox<?>) control).setValue(null);
+            }
+        }
+        // Clear ID field but keep in update mode
+        if (updateIdField != null) {
+            updateIdField.clear();
+        }
+    }
+    
+    /**
+     * Load data for update operation
+     */
+    private void loadDataForUpdate() {
+        if (updateIdField == null || updateIdField.getText().trim().isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Warning");
+            alert.setHeaderText(null);
+            alert.setContentText("Please enter an ID to load data.");
+            alert.showAndWait();
+            return;
+        }
+        
+        String idValue = updateIdField.getText().trim();
+        String idColumnName = getIdColumnName();
+        
+        // Get field values from database
+        String[] fieldNames = getFieldLabelsForEntity();
+        if (fieldNames == null) {
+            showErrorAlert("Error loading data", "Could not retrieve field names.");
+            return;
+        }
+        
+        // Get values using the improved operation class
+        operation<Object> op = new operation<>();
+        String[] values = op.getFieldValues(getEntityClass(), idColumnName, idValue);
+        
+        if (values == null || values.length == 0) {
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText(null);
+            alert.setContentText("No record found with ID: " + idValue);
+            alert.showAndWait();
+            return;
+        }
+        
+        // Populate form fields with loaded values
+        int valueIndex = 0;
+        for (Control control : datafield.keySet()) {
+            if (valueIndex >= values.length || valueIndex >= fieldNames.length) break;
+            
+            String fieldName = datafield.get(control);
+            String dbFieldName = fieldNames[valueIndex];
+            
+            // Skip ID fields in the form (they're handled separately)
+            if (dbFieldName.toLowerCase().contains("_id") && 
+                dbFieldName.toLowerCase().split("_")[0].equals(currentEntity.toLowerCase())) {
+                valueIndex++;
+                continue;
+            }
+            
+            if (control instanceof TextField) {
+                ((TextField) control).setText(values[valueIndex] != null ? values[valueIndex] : "");
+            } else if (control instanceof ComboBox) {
+                ComboBox<String> comboBox = (ComboBox<String>) control;
+                String value = values[valueIndex];
+                // For foreign keys, convert ID to name
+                if (fieldName.toLowerCase().contains("_name") && !fieldName.toLowerCase().contains("full_name")) {
+                    String relatedEntity = fieldName.toLowerCase().replace("_name", "");
+                    String name = getNameFromId(relatedEntity, value);
+                    if (name != null && comboBox.getItems().contains(name)) {
+                        comboBox.setValue(name);
+                    }
+                } else {
+                    if (value != null && comboBox.getItems().contains(value)) {
+                        comboBox.setValue(value);
+                    }
+                }
+            }
+            valueIndex++;
+        }
+    }
+    
+    /**
+     * Submit update form
+     */
+    private void submitUpdateForm() {
+        if (updateIdField == null || updateIdField.getText().trim().isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING);
+            alert.setTitle("Warning");
+            alert.setHeaderText(null);
+            alert.setContentText("Please enter an ID to update.");
+            alert.showAndWait();
+            return;
+        }
+        
+        String idValue = updateIdField.getText().trim();
+        String idColumnName = getIdColumnName();
+        
+        List<String> values = collectFormValues();
+        if (values == null) return;
+        
+        operation<Object> op = new operation<>();
+        boolean success = op.update(currentEntity.toLowerCase(), getEntityClass(), values, idValue, idColumnName);
+        
+        if (success) {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Success");
+            alert.setHeaderText(null);
+            alert.setContentText(currentEntity + " record has been successfully updated!");
+            alert.showAndWait();
+            updateContentArea(); // Refresh table
+        } else {
+            showErrorAlert("Update Failed", "An error occurred while updating the " + currentEntity + " record. Please try again.");
+        }
+    }
+    
+    /**
+     * Get ID column name for current entity
+     */
+    private String getIdColumnName() {
+        return switch (currentEntity.toLowerCase()) {
+            case "book" -> "book_id";
+            case "author" -> "author_id";
+            case "borrower" -> "borrower_id";
+            case "borrowertype" -> "type_id";
+            case "loan" -> "loan_id";
+            case "loanperiod" -> "period_id";
+            case "publisher" -> "publisher_id";
+            case "sale" -> "sale_id";
+            case "user" -> "username";
+            default -> currentEntity.toLowerCase() + "_id";
+        };
+    }
+    
+    /**
+     * Get entity class for current entity
+     */
+    private Class<?> getEntityClass() {
+        return switch (currentEntity) {
+            case "Book" -> book.class;
+            case "Author" -> Author.class;
+            case "Borrower" -> borrower.class;
+            case "Borrowertype" -> borrowertype.class;
+            case "Loan" -> loan.class;
+            case "Loanperiod" -> loanperiod.class;
+            case "Publisher" -> publisher.class;
+            case "Sale" -> sale.class;
+            default -> Object.class;
+        };
+    }
+    
+    /**
+     * Get name from ID for foreign key relationships
+     */
+    private String getNameFromId(String entityType, String idValue) {
+        // This would need to query the database to get name from ID
+        // For now, return null - can be implemented if needed
+        return null;
     }
     
     private void showDeleteForm() {
@@ -445,6 +667,7 @@ for(String labelText: getFieldLabelsForEntity()) {
         idLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #34495e;");
         
         TextField idField = new TextField();
+        idField.setPromptText("Enter ID to delete...");
         idField.setStyle("-fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #bdc3c7; -fx-padding: 0 12px;");
         idField.setPrefWidth(300);
         
@@ -456,6 +679,48 @@ for(String labelText: getFieldLabelsForEntity()) {
         Button confirmBtn = new Button("Confirm Deletion");
         confirmBtn.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 16px; -fx-background-radius: 25px; -fx-pref-width: 200px; -fx-pref-height: 50px;");
         
+        // FIXED: Implement delete functionality
+        confirmBtn.setOnAction(e -> {
+            String idValue = idField.getText().trim();
+            if (idValue.isEmpty()) {
+                Alert alert = new Alert(Alert.AlertType.WARNING);
+                alert.setTitle("Warning");
+                alert.setHeaderText(null);
+                alert.setContentText("Please enter an ID to delete.");
+                alert.showAndWait();
+                return;
+            }
+            
+            // Confirm deletion
+            Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION);
+            confirmAlert.setTitle("Confirm Deletion");
+            confirmAlert.setHeaderText("Are you sure?");
+            confirmAlert.setContentText("This action cannot be undone. Do you want to proceed?");
+            
+            if (confirmAlert.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                String idColumnName = getIdColumnName();
+                operation<Object> op = new operation<>();
+                boolean success = op.delete(currentEntity.toLowerCase(), idColumnName, idValue);
+                
+                if (success) {
+                    Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                    alert.setTitle("Success");
+                    alert.setHeaderText(null);
+                    alert.setContentText(currentEntity + " record has been successfully deleted!");
+                    alert.showAndWait();
+                    
+                    // Refresh table
+                    updateContentArea();
+                } else {
+                    Alert alert = new Alert(Alert.AlertType.ERROR);
+                    alert.setTitle("Error");
+                    alert.setHeaderText(null);
+                    alert.setContentText("Failed to delete " + currentEntity + " record. The record may not exist or may be referenced by other records.");
+                    alert.showAndWait();
+                }
+            }
+        });
+        
         Button cancelBtn = new Button("Cancel Operation");
         cancelBtn.setStyle("-fx-background-color: #757575; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 16px; -fx-background-radius: 25px; -fx-pref-width: 200px; -fx-pref-height: 50px;");
         cancelBtn.setOnAction(e -> updateContentArea());
@@ -465,87 +730,188 @@ for(String labelText: getFieldLabelsForEntity()) {
         deleteContainer.getChildren().addAll(warningIcon, title, warning, idBox, buttonBox);
         contentArea.getChildren().add(deleteContainer);
     }
+    /**
+     * Get ID from name using PreparedStatement (FIXED: Now uses parameterized queries)
+     * Handles special cases like full_name (CONCAT) properly
+     */
     private int getIdFromName(String name, String table) {
-        String query = "";
+        if (name == null || name.trim().isEmpty()) {
+            return -1;
+        }
+        
+        String sql = "";
+        
         switch (table.toLowerCase()) {
             case "author":
-                query = "SELECT author_id FROM author WHERE full_name = '" + name + "'";
+                // For author, full_name is CONCAT(first_name, ' ', last_name)
+                sql = "SELECT author_id FROM author WHERE CONCAT(first_name, ' ', last_name) = ?";
                 break;
             case "borrower":
-                query = "SELECT borrower_id FROM borrower WHERE full_name = '" + name + "'";
+                // For borrower, full_name is CONCAT(first_name, ' ', last_name)
+                sql = "SELECT borrower_id FROM borrower WHERE CONCAT(first_name, ' ', last_name) = ?";
                 break;
             case "borrowertype":
-                query = "SELECT type_id FROM borrowertype WHERE type_name = '" + name + "'";
+                sql = "SELECT type_id FROM borrowertype WHERE type_name = ?";
                 break;
             case "loanperiod":
-                query = "SELECT period_id FROM loanperiod WHERE period_name = '" + name + "'";
+                sql = "SELECT period_id FROM loanperiod WHERE period_name = ?";
                 break;
             case "publisher":
-                query = "SELECT publisher_id FROM publisher WHERE name = '" + name + "'";
+                sql = "SELECT publisher_id FROM publisher WHERE name = ?";
+                break;
+            case "book":
+                sql = "SELECT book_id FROM book WHERE title = ?";
                 break;
             default:
                 return -1;
         }
-        try {
-            ResultSet rs = Objects.requireNonNull(DatabaseConnection.getConnection()).createStatement().executeQuery(query);
-            if (rs.next()) {
-                return rs.getInt(1);
+        
+        try (Connection conn = DatabaseConnection.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            
+            if (conn == null) {
+                System.err.println("Failed to get database connection");
+                return -1;
             }
+            
+            pstmt.setString(1, name);
+            
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                }
+            }
+            
         } catch (SQLException e) {
+            System.err.println("Error getting ID from name: " + e.getMessage());
             e.printStackTrace();
         }
+        
         return -1;
     }
-    private boolean submitBookentity() {
+    /**
+     * Collect form values for insert/update operations (FIXED: Works for all entities)
+     */
+    private List<String> collectFormValues() {
         List<String> values = new ArrayList<>();
+        String[] fieldNames = getFieldLabelsForEntity();
+        
+        if (fieldNames == null) {
+            showErrorAlert("Error", "Could not retrieve field names.");
+            return null;
+        }
+        
+        // Create a map of field names to controls for easier lookup
+        Map<String, Control> fieldMap = new LinkedHashMap<>();
         for (Control control : datafield.keySet()) {
+            fieldMap.put(datafield.get(control), control);
+        }
+        
+        // Process values in order of database columns
+        for (String dbFieldName : fieldNames) {
+            String formFieldName = dbFieldName;
+            
+            // Handle special field name mappings
+            if (dbFieldName.equals("type_id")) {
+                formFieldName = "borrowertype_name";
+            } else if (dbFieldName.equals("period_id")) {
+                formFieldName = "loanperiod_name";
+            } else if (dbFieldName.toLowerCase().contains("_id") && 
+                      !dbFieldName.toLowerCase().split("_")[0].equals(currentEntity.toLowerCase())) {
+                formFieldName = dbFieldName.replace("_id", "_name");
+            }
+            
+            Control control = fieldMap.get(formFieldName);
+            
+            if (control == null) {
+                // Field not in form (might be auto-generated ID), use empty string
+                values.add("");
+                continue;
+            }
+            
             if (control instanceof TextField) {
-
                 TextField textField = (TextField) control;
-                if(textField.getText().trim().isEmpty()){
-                    values.add("");
-                    continue;
-                }
                 values.add(textField.getText().trim());
             } else if (control instanceof ComboBox) {
                 ComboBox<String> comboBox = (ComboBox<String>) control;
-                if(comboBox.getValue()==null) {
+                String selectedValue = comboBox.getValue();
+                
+                if (selectedValue == null || selectedValue.trim().isEmpty()) {
                     values.add("");
                     continue;
                 }
-                if(datafield.get(control).toLowerCase().contains("available")){
-                    values.add(comboBox.getValue().equals("Yes")?"1":"0");
-                    continue;
+                
+                // Handle available field
+                if (dbFieldName.toLowerCase().contains("available")) {
+                    values.add(selectedValue.equals("Yes") ? "1" : "0");
+                } else {
+                    // Convert name to ID for foreign keys
+                    String relatedEntity = dbFieldName.split("_")[0];
+                    int id = getIdFromName(selectedValue, relatedEntity);
+                    values.add(id > 0 ? String.valueOf(id) : "");
                 }
-                values.add(String.valueOf(getIdFromName(comboBox.getValue(),"publisher")));
+            } else {
+                values.add("");
             }
         }
-        return
-        new operation().insert(currentEntity.toLowerCase(), book.class, values);
-
+        
+        return values;
     }
     
     private void submitForm() {
-        boolean success = false;
-        // Show success message
-        if(currentEntity.equals("Book"))
-        	success=submitBookentity();
-        if(success){
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Success");
-        alert.setHeaderText(null);
-        alert.setContentText(currentEntity + " record has been successfully processed!");
-        alert.showAndWait();
-        
-        // Return to main view with table
-        updateContentArea();}
-        else {
-        	Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Error");
-            alert.setHeaderText(null);
-            alert.setContentText("An error occurred while processing the " + currentEntity + " record. Please try again.");
-            alert.showAndWait();
+        if (isUpdateMode) {
+            submitUpdateForm();
+            return;
         }
+        
+        List<String> values = collectFormValues();
+        if (values == null || values.isEmpty()) {
+            showErrorAlert("Error", "Could not collect form values.");
+            return;
+        }
+        
+        // Get the correct entity class
+        Class<?> entityClass = getEntityClass();
+        if (entityClass == Object.class) {
+            showErrorAlert("Error", "Unknown entity type: " + currentEntity);
+            return;
+        }
+        
+        operation<Object> op = new operation<>();
+        boolean success = false;
+        
+        try {
+            success = op.insert(currentEntity.toLowerCase(), entityClass, values);
+        } catch (Exception e) {
+            System.err.println("Error during insert: " + e.getMessage());
+            e.printStackTrace();
+            showErrorAlert("Error", "An error occurred: " + e.getMessage());
+            return;
+        }
+        
+        if (success) {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Success");
+            alert.setHeaderText(null);
+            alert.setContentText(currentEntity + " record has been successfully inserted!");
+            alert.showAndWait();
+            
+            // Refresh table
+            updateContentArea();
+        } else {
+            showErrorAlert("Insert Failed", "An error occurred while inserting the " + currentEntity + " record. Please check your input and try again.");
+        }
+    }
+    
+    /**
+     * Show error alert dialog
+     */
+    private void showErrorAlert(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.showAndWait();
     }
     
     public static void main(String[] args) {
